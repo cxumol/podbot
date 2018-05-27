@@ -129,7 +129,9 @@ func addItem(inp string, db *sql.DB) (string, int64) {
 	if urlIdx == -1 {
 		return "", -2
 	}
-	newRec := []string{inp[5 : urlIdx-1], inp[urlIdx:]}
+
+	first_idx := strings.Index(inp, " ")
+	newRec := []string{inp[first_idx : urlIdx-1], inp[urlIdx:]}
 
 	// check duplicated record
 	if searchUrl(inp, db) {
@@ -199,6 +201,7 @@ func chErr(err error) {
 
 func int64InSlice(a int64, list []int64) bool {
 	for _, b := range list {
+		log.Println("deb", a, b)
 		if b == a {
 			return true
 		}
