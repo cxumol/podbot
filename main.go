@@ -2,21 +2,40 @@ package main
 
 import (
 	"database/sql"
-
 	_ "github.com/mattn/go-sqlite3"
 
-	"bufio"
+	"io/ioutil"
 	"os"
+	"os/exec"
 
 	"fmt"
-	"os/exec"
+	"log"
+
+	"encoding/json"
 	"strings"
 	"time"
+
+	"gopkg.in/telegram-bot-api.v4"
 )
 
-func main() {
-	dbName := "./sql.db"
+type Config struct {
+	BotApi  string  `json:"BotApi"`
+	AdminID []int64 `json:"AdminID"`
+	GroupID []int64 `json:"GroupID"`
+}
 
+func loadConfig(confFile string) Config {
+	// confFile:="./config.json"
+
+	raw, err := ioutil.ReadFile(confFile)
+	chErr(err)
+
+	var c Config
+	json.Unmarshal(raw, &c)
+	return c
+}
+
+func loadDB(dbName string) *sql.DB {
 	if _, err := os.Stat(dbName); os.IsNotExist(err) {
 		err := exec.Command("cp", "sql.db.init4podcast", "sql.db").Run()
 		chErr(err)
@@ -25,16 +44,97 @@ func main() {
 
 	db, err := sql.Open("sqlite3", dbName)
 	dbErr(err)
+	return db
+}
 
-	// read from stdin, only for test
-	print("+1s: ")
-	inp, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	chErr(err)
+func loadtgbot(botApi string) (*tgbotapi.BotAPI, tgbotapi.UpdatesChannel) {
+	bot, err := tgbotapi.NewBotAPI(botApi)
+	if err != nil {
+		log.Panic(err)
+	}
 
+	bot.Debug = true
+
+	log.Printf("Authorized on account %s", bot.Self.UserName)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates, err := bot.GetUpdatesChan(u)
+	return bot, updates
+}
+
+func main() {
+
+	// load configure, database, and telegram bot
+	config := loadConfig("./config.json")
+	db := loadDB("./sql.db")
+
+	// println(config.BotApi)
+	// load bot
+	bot, updates := loadtgbot(config.BotApi)
+	botHandler(bot, updates, db, config)
+
+}
+
+func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.DB, config Config) {
+	for update := range updates {
+		if update.Message == nil {
+			continue
+		}
+
+		log.Printf("[%s] %s", update.Message.Chat.ID, update.Message.Text)
+
+		if update.Message.IsCommand() {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
+			switch update.Message.Command() {
+			case "add":
+				{
+					if int64InSlice(update.Message.Chat.ID, config.GroupID) {
+						itemName, itemid := addItem(update.Message.Text, db)
+						if itemid > -1 {
+							msg.Text = fmt.Sprintf("登记了 %s . ", itemName)
+						} else if itemid == -1 {
+							msg.Text = "劳驾先搜索, 免得重复添加"
+						} else if itemid == -2 {
+							msg.Text = "链接呢?"
+						}
+					} else {
+						msg.Text = "只能在指定场合新增"
+					}
+
+				}
+			case "help":
+				msg.Text = "Sorry I can't help you. \nYou should help yourself."
+			default:
+				msg.Text = "use /help to find someone help you"
+			}
+			bot.Send(msg)
+		} else {
+
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
+			msg.ReplyToMessageID = update.Message.MessageID
+			msg.Text = searchItem(update.Message.Text, db)
+			if msg.Text == "" {
+				msg.Text = "缺. 请试试换词重搜. \n欢迎补缺"
+			}
+			bot.Send(msg)
+		}
+	}
+}
+
+func addItem(inp string, db *sql.DB) (string, int64) {
 	// parse input
 	urlIdx := strings.Index(inp, "http")
-	newRec := []string{inp[:urlIdx-1], inp[urlIdx:]}
+	if urlIdx == -1 {
+		return "", -2
+	}
+	newRec := []string{inp[5 : urlIdx-1], inp[urlIdx:]}
 
+	// check duplicated record
+	if searchUrl(inp, db) {
+		return "", -1
+	}
 	// insert a new record
 	query, err := db.Prepare("INSERT INTO podcast (name, url, created) VALUES(?,?,?)")
 	chErr(err)
@@ -43,41 +143,65 @@ func main() {
 	chErr(err)
 
 	newid, _ := resp.LastInsertId()
-	print(newid)
-	print(" is inserted.\n")
 
-	// find my result
+	return newRec[0], newid
+}
 
-	// read from stdin, only for test
-	print("search by: ")
-	inp, err = bufio.NewReader(os.Stdin).ReadString('\n')
-	chErr(err)
-
-	// query search
-	que := fmt.Sprint("SELECT name, url FROM podcast WHERE name LIKE '%", inp[:len(inp)-1], "%'")
+func searchUrl(inp string, db *sql.DB) bool {
+	que := fmt.Sprint("SELECT name, url FROM podcast WHERE url = '", inp, "'")
 	fmt.Println(que)
 	rows, err := db.Query(que)
 	chErr(err)
 
 	for rows.Next() {
 		var name string
+		var url string = ""
+
+		err = rows.Scan(&name, &url)
+		chErr(err)
+		if url != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func searchItem(inp string, db *sql.DB) string {
+	que := fmt.Sprint("SELECT name, url FROM podcast WHERE name LIKE '%", inp, "%'")
+	fmt.Println(que)
+	rows, err := db.Query(que)
+	chErr(err)
+
+	result := ``
+	for rows.Next() {
+		var name string
 		var url string
 
 		err = rows.Scan(&name, &url)
 		fmt.Println(name, url)
+		result = result + name + " " + url + "\n"
 	}
-
+	return result
 }
 
 func dbErr(err error) {
 	if err != nil {
 		println("You need initialize sql.db at first.")
-		panic(err)
+		log.Fatal(err)
 	}
 }
 
 func chErr(err error) {
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+}
+
+func int64InSlice(a int64, list []int64) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }

@@ -1,3 +1,5 @@
+.idea
 *.db
 pkg
 src
+config.json
