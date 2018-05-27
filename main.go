@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"unicode/utf8"
+
 	"gopkg.in/telegram-bot-api.v4"
 )
 
@@ -92,12 +94,15 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 				{
 					if int64InSlice(update.Message.Chat.ID, config.GroupID) {
 						itemName, itemid := addItem(update.Message.Text, db)
-						if itemid > -1 {
-							msg.Text = fmt.Sprintf("登记了 %s . ", itemName)
-						} else if itemid == -1 {
+						switch itemid {
+						case -1:
 							msg.Text = "劳驾先搜索, 免得重复添加"
-						} else if itemid == -2 {
-							msg.Text = "链接呢?"
+						case -2:
+							msg.Text = "链接呢???"
+						case -3:
+							msg.Text = "检查出无效字符, 无法添加"
+						default:
+							msg.Text = fmt.Sprintf("登记了 %s . ", itemName)
 						}
 					} else {
 						msg.Text = "只能在指定场合新增"
@@ -105,9 +110,9 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 
 				}
 			case "help":
-				msg.Text = "Sorry I can't help you. \nYou should help yourself."
+				msg.Text = "Sorry I can't help you. \nYou have to help yourself."
 			default:
-				msg.Text = "use /help to find someone help you"
+				msg.Text = "use /help to ask someone help you"
 			}
 			bot.Send(msg)
 		} else {
@@ -125,13 +130,20 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 
 func addItem(inp string, db *sql.DB) (string, int64) {
 	// parse input
+
+	// check if input is valid utf8
+	if utf8.ValidString(inp) == false {
+		return "", -3
+	}
+
+	// check if contain url
 	urlIdx := strings.Index(inp, "http")
 	if urlIdx == -1 {
 		return "", -2
 	}
 
 	first_idx := strings.Index(inp, " ")
-	newRec := []string{inp[first_idx : urlIdx-1], inp[urlIdx:]}
+	newRec := []string{inp[first_idx+1 : urlIdx-1], inp[urlIdx:]}
 
 	// check duplicated record
 	if searchUrl(inp, db) {
