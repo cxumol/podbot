@@ -193,7 +193,7 @@ func searchItem(inp string, db *sql.DB) string {
 
 		err = rows.Scan(&name, &url)
 		fmt.Println(name, url)
-		result = result + name + " " + url + "\n"
+		result = result + name + " `" + url + "`\n"
 	}
 	return result
 }
@@ -213,7 +213,6 @@ func chErr(err error) {
 
 func int64InSlice(a int64, list []int64) bool {
 	for _, b := range list {
-		log.Println("deb", a, b)
 		if b == a {
 			return true
 		}
