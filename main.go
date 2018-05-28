@@ -114,6 +114,7 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 			default:
 				msg.Text = "use /help to ask someone help you"
 			}
+			msg.ParseMode = tgbotapi.ModeMarkdown
 			bot.Send(msg)
 		} else {
 
@@ -123,6 +124,7 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 			if msg.Text == "" {
 				msg.Text = "缺. 请试试换词重搜. \n欢迎补缺"
 			}
+			msg.ParseMode = tgbotapi.ModeMarkdown
 			bot.Send(msg)
 		}
 	}
@@ -146,7 +148,7 @@ func addItem(inp string, db *sql.DB) (string, int64) {
 	newRec := []string{inp[first_idx+1 : urlIdx-1], inp[urlIdx:]}
 
 	// check duplicated record
-	if searchUrl(inp, db) {
+	if searchUrl(inp[urlIdx:], db) {
 		return "", -1
 	}
 	// insert a new record
