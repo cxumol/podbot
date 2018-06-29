@@ -1,0 +1,1 @@
+go build --tags "libsqlite3 linux" -o pkg/cnpodbot

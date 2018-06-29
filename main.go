@@ -103,7 +103,7 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 			continue
 		}
 
-		log.Printf("[%s] %s", update.Message.Chat.ID, update.Message.Text)
+		log.Printf("[%v].[%v] %s", update.Message.Chat, update.Message.From, update.Message.Text)
 
 		if update.Message.IsCommand() {
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
@@ -136,6 +136,8 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 						msg.Text = fmt.Sprintf("删除了%v条记录", affectedrows)
 					}
 				}
+			case "howmany":
+				msg.Text = howmany(db)
 			default:
 				msg.Text = "use /help to ask someone help you"
 			}
@@ -311,6 +313,23 @@ func opmlRead(opmlURL string, db *sql.DB) string {
 	}
 	return "导入成功"
 
+}
+
+func howmany(db *sql.DB) string {
+	que := "SELECT COUNT(*) FROM podcast"
+	rows, err := db.Query(que)
+	chErr(err)
+
+	result := ``
+	defer rows.Close()
+	for rows.Next() {
+		var count string
+
+		err = rows.Scan(&count)
+		log.Println(count)
+		result = "一共" + count + "只广播登记在案"
+	}
+	return result
 }
 
 func dbErr(err error) {
