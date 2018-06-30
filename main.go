@@ -119,6 +119,8 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 							msg.Text = "链接呢???"
 						case -3:
 							msg.Text = "检查出无效字符, 无法添加"
+						case -10:
+							msg.Text = "格式不对, 回去面壁"
 						default:
 							msg.Text = fmt.Sprintf("登记了 %s . ", itemName)
 						}
@@ -134,6 +136,8 @@ func botHandler(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, db *sql.D
 					if int64InSlice(int64(update.Message.From.ID), config.AdminID) {
 						_, affectedrows := delItem(update.Message.Text, db)
 						msg.Text = fmt.Sprintf("删除了%v条记录", affectedrows)
+					} else {
+						msg.Text = "请先申请成为管理员或志愿者"
 					}
 				}
 			case "howmany":
@@ -190,8 +194,13 @@ func addItem(inp string, db *sql.DB) (string, int64) {
 		return "", -2
 	}
 
+	var newRec []string
 	first_idx := strings.Index(inp, " ")
-	newRec := []string{inp[first_idx+1 : urlIdx-1], inp[urlIdx:]}
+	if first_idx > 0 && urlIdx-first_idx > 1 {
+		newRec = []string{inp[first_idx+1 : urlIdx-1], inp[urlIdx:]}
+	} else {
+		return "", -10
+	}
 
 	// check duplicated record
 	if searchUrl(inp[urlIdx:], db) {
@@ -273,7 +282,7 @@ func searchItem(inp string, db *sql.DB) string {
 
 		err = rows.Scan(&name, &url)
 		fmt.Println(name, url)
-		result = result + name + " `" + url + "`\n"
+		result = result + name + " " + url + "\n"
 	}
 	return result
 }
